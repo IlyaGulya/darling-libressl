@@ -81,7 +81,15 @@ EC_GROUP_new_curve_GFp(const BIGNUM *p, const BIGNUM *a, const BIGNUM *b,
 	const EC_METHOD *meth;
 	EC_GROUP *ret;
 
-#if defined(OPENSSL_BN_ASM_MONT)
+#if defined(DARLING_USE_EC_GFP_SIMPLE)
+	/*
+	 * Darling builds LibreSSL as a fat Darwin target with OPENSSL_NO_ASM.
+	 * The optimized NIST/Montgomery prime-field paths misclassify valid
+	 * P-256/P-384 points, breaking ECC certificate decoding and TLS.
+	 * Prefer the conservative generic method until those paths are fixed.
+	 */
+	meth = EC_GFp_simple_method();
+#elif defined(OPENSSL_BN_ASM_MONT)
 	/*
 	 * This might appear controversial, but the fact is that generic
 	 * prime method was observed to deliver better performance even
@@ -130,7 +138,11 @@ EC_GROUP_new_curve_GFp(const BIGNUM *p, const BIGNUM *a, const BIGNUM *b,
 		ERR_clear_error();
 
 		EC_GROUP_clear_free(ret);
+#if defined(DARLING_USE_EC_GFP_SIMPLE)
+		meth = EC_GFp_simple_method();
+#else
 		meth = EC_GFp_mont_method();
+#endif
 
 		ret = EC_GROUP_new(meth);
 		if (ret == NULL)

@@ -689,6 +689,7 @@ set_source_files_properties(crypto/compat/explicit_bzero.c PROPERTIES
 
 target_compile_definitions(crypto44 PRIVATE
 	OPENSSL_NO_ASM
+	DARLING_USE_EC_GFP_SIMPLE
 	OPENSSLDIR="/etc/ssl"
 )
 

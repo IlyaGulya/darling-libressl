@@ -3183,6 +3183,7 @@ ec_group_new_from_data(const ec_list_element curve)
 		ECerror(ERR_R_BN_LIB);
 		goto err;
 	}
+#if !defined(DARLING_USE_EC_GFP_SIMPLE)
 	if (curve.meth != 0) {
 		meth = curve.meth();
 		if (((group = EC_GROUP_new(meth)) == NULL) ||
@@ -3190,7 +3191,9 @@ ec_group_new_from_data(const ec_list_element curve)
 			ECerror(ERR_R_EC_LIB);
 			goto err;
 		}
-	} else if (data->field_type == NID_X9_62_prime_field) {
+	} else
+#endif
+	if (data->field_type == NID_X9_62_prime_field) {
 		if ((group = EC_GROUP_new_curve_GFp(p, a, b, ctx)) == NULL) {
 			ECerror(ERR_R_EC_LIB);
 			goto err;
