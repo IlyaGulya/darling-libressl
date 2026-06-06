@@ -4,12 +4,15 @@
  * BSD socket emulation code for Winsock2
  * File IO compatibility shims
  * Brent Cook <bcook@openbsd.org>
+ * Kinichiro Inoguchi <inoguchi@openbsd.org>
  */
 
 #define NO_REDEF_POSIX_FUNCTIONS
 
-#include <windows.h>
+#include <sys/time.h>
+
 #include <ws2tcpip.h>
+#include <windows.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -18,6 +21,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <sys/stat.h>
+
+static int
+is_socket(int fd)
+{
+	// Border case: Don't break std* file descriptors
+	if (fd < 3)
+		return 0;
+
+	// All locally-allocated file descriptors will have the high bit set
+	return (fd & 0x80000000) == 0;
+}
+
+static int
+get_real_fd(int fd)
+{
+	return (fd & 0x7fffffff);
+}
 
 void
 posix_perror(const char *s)
@@ -41,6 +63,12 @@ posix_fopen(const char *path, const char *mode)
 }
 
 int
+libressl_fstat(int fd, struct stat *statbuf)
+{
+	return fstat(get_real_fd(fd), statbuf);
+}
+
+int
 posix_open(const char *path, ...)
 {
 	va_list ap;
@@ -59,7 +87,14 @@ posix_open(const char *path, ...)
 		flags |= O_NOINHERIT;
 	}
 	flags &= ~O_NONBLOCK;
-	return open(path, flags, mode);
+
+	const int fh = open(path, flags, mode);
+	if (fh == -1) {
+		return fh;
+	}
+
+	// Set high bit to mark file descriptor as a file handle
+	return fh + 0x80000000;
 }
 
 char *
@@ -159,22 +194,29 @@ posix_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 int
 posix_close(int fd)
 {
-	if (closesocket(fd) == SOCKET_ERROR) {
-		int err = WSAGetLastError();
-		return (err == WSAENOTSOCK || err == WSAEBADF) ?
-			close(fd) : wsa_errno(err);
+	int rc;
+	if (is_socket(fd)) {
+		if ((rc = closesocket(fd)) == SOCKET_ERROR) {
+			int err = WSAGetLastError();
+			rc = wsa_errno(err);
+		}
+	} else {
+		rc = close(get_real_fd(fd));
 	}
-	return 0;
+	return rc;
 }
 
 ssize_t
 posix_read(int fd, void *buf, size_t count)
 {
-	ssize_t rc = recv(fd, buf, count, 0);
-	if (rc == SOCKET_ERROR) {
-		int err = WSAGetLastError();
-		return (err == WSAENOTSOCK || err == WSAEBADF) ?
-			read(fd, buf, count) : wsa_errno(err);
+	ssize_t rc;
+	if (is_socket(fd)) {
+		if ((rc = recv(fd, buf, count, 0)) == SOCKET_ERROR) {
+			int err = WSAGetLastError();
+			rc = wsa_errno(err);
+		}
+	} else {
+		rc = read(get_real_fd(fd), buf, count);
 	}
 	return rc;
 }
@@ -182,11 +224,13 @@ posix_read(int fd, void *buf, size_t count)
 ssize_t
 posix_write(int fd, const void *buf, size_t count)
 {
-	ssize_t rc = send(fd, buf, count, 0);
-	if (rc == SOCKET_ERROR) {
-		int err = WSAGetLastError();
-		return (err == WSAENOTSOCK || err == WSAEBADF) ?
-			write(fd, buf, count) : wsa_errno(err);
+	ssize_t rc;
+	if (is_socket(fd)) {
+		if ((rc = send(fd, buf, count, 0)) == SOCKET_ERROR) {
+			rc = wsa_errno(WSAGetLastError());
+		}
+	} else {
+		rc = write(get_real_fd(fd), buf, count);
 	}
 	return rc;
 }
@@ -195,22 +239,43 @@ int
 posix_getsockopt(int sockfd, int level, int optname,
 	void *optval, socklen_t *optlen)
 {
-	int rc = getsockopt(sockfd, level, optname, (char *)optval, optlen);
-	return rc == 0 ? 0 : wsa_errno(WSAGetLastError());
-
+	int rc;
+	if (is_socket(sockfd)) {
+		rc = getsockopt(sockfd, level, optname, (char *)optval, optlen);
+		if (rc != 0) {
+			rc = wsa_errno(WSAGetLastError());
+		}
+	} else {
+		rc = -1;
+	}
+	return rc;
 }
 
 int
 posix_setsockopt(int sockfd, int level, int optname,
 	const void *optval, socklen_t optlen)
 {
-	int rc = setsockopt(sockfd, level, optname, (char *)optval, optlen);
-	return rc == 0 ? 0 : wsa_errno(WSAGetLastError());
+	int rc;
+	if (is_socket(sockfd)) {
+		rc = setsockopt(sockfd, level, optname, (char *)optval, optlen);
+		if (rc != 0) {
+			rc = wsa_errno(WSAGetLastError());
+		}
+	} else {
+		rc = -1;
+	}
+	return rc;
+}
+
+uid_t getuid(void)
+{
+	/* Windows fstat sets 0 as st_uid */
+	return 0;
 }
 
 #ifdef _MSC_VER
 struct timezone;
-int gettimeofday(struct timeval * tp, struct timezone * tzp)
+int gettimeofday(struct timeval *tp, void *tzp)
 {
 	/*
 	 * Note: some broken versions only have 8 trailing zero's, the correct
@@ -227,15 +292,8 @@ int gettimeofday(struct timeval * tp, struct timezone * tzp)
 	time = ((uint64_t)file_time.dwLowDateTime);
 	time += ((uint64_t)file_time.dwHighDateTime) << 32;
 
-	tp->tv_sec = (long)((time - EPOCH) / 10000000L);
+	tp->tv_sec = (long long)((time - EPOCH) / 10000000L);
 	tp->tv_usec = (long)(system_time.wMilliseconds * 1000);
 	return 0;
 }
-
-unsigned int sleep(unsigned int seconds)
-{
-	Sleep(seconds * 1000);
-	return seconds;
-}
-
 #endif

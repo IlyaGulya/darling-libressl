@@ -1,4 +1,4 @@
-.\" $OpenBSD: tls_conn_version.3,v 1.8 2018/05/26 12:32:59 schwarze Exp $
+.\" $OpenBSD: tls_conn_version.3,v 1.12 2025/07/07 10:54:00 schwarze Exp $
 .\"
 .\" Copyright (c) 2015 Bob Beck <beck@openbsd.org>
 .\" Copyright (c) 2016, 2018 Joel Sing <jsing@openbsd.org>
@@ -15,12 +15,13 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: May 26 2018 $
+.Dd $Mdocdate: July 7 2025 $
 .Dt TLS_CONN_VERSION 3
 .Os
 .Sh NAME
 .Nm tls_conn_version ,
 .Nm tls_conn_cipher ,
+.Nm tls_conn_cipher_strength ,
 .Nm tls_conn_alpn_selected ,
 .Nm tls_conn_servername ,
 .Nm tls_conn_session_resumed ,
@@ -29,16 +30,20 @@
 .Nm tls_peer_cert_chain_pem ,
 .Nm tls_peer_cert_issuer ,
 .Nm tls_peer_cert_subject ,
+.Nm tls_peer_cert_common_name ,
 .Nm tls_peer_cert_hash ,
 .Nm tls_peer_cert_notbefore ,
 .Nm tls_peer_cert_notafter
 .Nd inspect an established TLS connection
 .Sh SYNOPSIS
+.Lb libtls libssl libcrypto
 .In tls.h
 .Ft const char *
 .Fn tls_conn_version "struct tls *ctx"
 .Ft const char *
 .Fn tls_conn_cipher "struct tls *ctx"
+.Ft int
+.Fn tls_conn_cipher_strength "struct tls *ctx"
 .Ft const char *
 .Fn tls_conn_alpn_selected "struct tls *ctx"
 .Ft const char *
@@ -62,6 +67,8 @@
 .Ft const char *
 .Fn tls_peer_cert_subject "struct tls *ctx"
 .Ft const char *
+.Fn tls_peer_cert_common_name "struct tls *ctx"
+.Ft const char *
 .Fn tls_peer_cert_hash "struct tls *ctx"
 .Ft time_t
 .Fn tls_peer_cert_notbefore "struct tls *ctx"
@@ -80,6 +87,11 @@ connected to
 .Fn tls_conn_cipher
 returns a string corresponding to the cipher suite negotiated with the peer
 connected to
+.Ar ctx .
+.Pp
+.Fn tls_conn_cipher_strength
+returns the strength in bits for the symmetric cipher that is being
+used with the peer connected to
 .Ar ctx .
 .Pp
 .Fn tls_conn_alpn_selected
@@ -125,6 +137,11 @@ corresponding to the subject of the peer certificate from
 returns a string
 corresponding to the issuer of the peer certificate from
 .Ar ctx .
+.Fn tls_peer_cert_common_name
+returns a string
+corresponding to the common name of the peer certificate from
+.Ar ctx
+or the empty string if no common name is present.
 .Pp
 .Fn tls_peer_cert_hash
 returns a string
@@ -150,9 +167,6 @@ the peer certificate from
 returns the time corresponding to the end of the validity period of
 the peer certificate from
 .Ar ctx .
-.Pp
-POINTER TO
-.Xr tls_ocsp_process_response 3
 .Sh RETURN VALUES
 The
 .Fn tls_conn_session_resumed
@@ -200,6 +214,13 @@ appeared in
 .Fn tls_conn_session_resumed
 appeared in
 .Ox 6.3 .
+.Pp
+.Fn tls_conn_cipher_strength
+appeared in
+.Ox 6.7 .
+.Fn tls_peer_cert_common_name
+appeared in
+.Ox 7.7 .
 .Sh AUTHORS
 .An Bob Beck Aq Mt beck@openbsd.org
 .An Joel Sing Aq Mt jsing@openbsd.org
