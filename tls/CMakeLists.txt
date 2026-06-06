@@ -47,34 +47,54 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/tls.sym DESTINATION
 	${CMAKE_CURRENT_BINARY_DIR})
 
 add_library(tls_compat_obj OBJECT ${TLS_COMPAT_SRC})
-target_include_directories(tls_compat_obj
+make_fat(tls_compat_obj)
+target_include_directories(tls_compat_obj BEFORE
 	PRIVATE
 		.
 		../include/compat
-	PUBLIC
 		../include
 		${CMAKE_BINARY_DIR}/include)
 
 add_library(tls_obj OBJECT ${TLS_SRC})
-target_include_directories(tls_obj
+make_fat(tls_obj)
+target_include_directories(tls_obj BEFORE
 	PRIVATE
 		.
 		../include/compat
-	PUBLIC
 		../include
 		${CMAKE_BINARY_DIR}/include)
 
 if(BUILD_SHARED_LIBS)
-	add_library(tls $<TARGET_OBJECTS:tls_obj> $<TARGET_OBJECTS:tls_compat_obj> $<TARGET_OBJECTS:compat_obj> empty.c)
+	set(DYLIB_INSTALL_NAME "/usr/lib/libtls.18.dylib")
+	set(DYLIB_CURRENT_VERSION "19.0.0")
+	set(DYLIB_COMPAT_VERSION "19.0.0")
+	if(DARLING)
+		add_darling_library(tls ${TLS_SRC} ${TLS_COMPAT_SRC} ${LIBRESSL_COMPAT_SRC} empty.c)
+	else()
+		add_darling_library(tls $<TARGET_OBJECTS:tls_obj> $<TARGET_OBJECTS:tls_compat_obj> $<TARGET_OBJECTS:compat_obj> empty.c)
+	endif()
 else()
-	add_library(tls $<TARGET_OBJECTS:tls_obj> $<TARGET_OBJECTS:tls_compat_obj> empty.c)
+	set(DYLIB_INSTALL_NAME "/usr/lib/libtls.18.dylib")
+	set(DYLIB_CURRENT_VERSION "19.0.0")
+	set(DYLIB_COMPAT_VERSION "19.0.0")
+	if(DARLING)
+		add_darling_library(tls ${TLS_SRC} ${TLS_COMPAT_SRC} ${LIBRESSL_COMPAT_SRC} empty.c)
+	else()
+		add_darling_library(tls $<TARGET_OBJECTS:tls_obj> $<TARGET_OBJECTS:tls_compat_obj> empty.c)
+	endif()
 endif()
+target_include_directories(tls BEFORE
+	PRIVATE
+		.
+		../include/compat
+		../include
+		${CMAKE_BINARY_DIR}/include)
 
 export_symbol(tls ${CMAKE_CURRENT_BINARY_DIR}/tls.sym)
-target_link_libraries(tls ${OPENSSL_LIBS})
+target_link_libraries(tls PRIVATE ${OPENSSL_LIBS} system ${PLATFORM_LIBS})
 set_target_properties(tls PROPERTIES
-	OUTPUT_NAME tls
-	ARCHIVE_OUTPUT_NAME tls
+	OUTPUT_NAME tls.18
+	ARCHIVE_OUTPUT_NAME tls.18
 	EXPORT_NAME TLS
 	VERSION ${TLS_VERSION}
 	SOVERSION ${TLS_MAJOR_VERSION}
@@ -90,18 +110,16 @@ target_include_directories(
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-install(
-	TARGETS tls
-	EXPORT TLS-target
-)
-
-export(
-	EXPORT TLS-target
-	FILE "${LibreSSL_BINARY_DIR}/LibreSSL-TLS.cmake"
-	NAMESPACE LibreSSL::
-)
-
 if(ENABLE_LIBRESSL_INSTALL)
+	install(
+		TARGETS tls
+		EXPORT TLS-target
+	)
+	export(
+		EXPORT TLS-target
+		FILE "${LibreSSL_BINARY_DIR}/LibreSSL-TLS.cmake"
+		NAMESPACE LibreSSL::
+	)
 	install(
 		TARGETS tls
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -121,4 +139,3 @@ if(BUILD_SHARED_LIBS)
 	add_library(tls-static STATIC $<TARGET_OBJECTS:tls_obj>)
 	target_link_libraries(tls-static ${OPENSSL_TEST_LIBS})
 endif()
-

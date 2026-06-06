@@ -48,10 +48,39 @@ string(STRIP ${TLS_VERSION} TLS_VERSION)
 string(REPLACE ":" "." TLS_VERSION ${TLS_VERSION})
 string(REGEX REPLACE "\\..*" "" TLS_MAJOR_VERSION ${TLS_VERSION})
 
-option(LIBRESSL_SKIP_INSTALL "Skip installation" ${LIBRESSL_SKIP_INSTALL})
-option(LIBRESSL_APPS "Build apps" ON)
-option(LIBRESSL_TESTS "Build tests" ON)
-option(ENABLE_ASM "Enable assembly" ON)
+set(_LIBRESSL_SKIP_INSTALL_DEFAULT ${LIBRESSL_SKIP_INSTALL})
+set(_LIBRESSL_APPS_DEFAULT ON)
+set(_LIBRESSL_TESTS_DEFAULT ON)
+set(_LIBRESSL_MAN_DEFAULT ON)
+set(_ENABLE_ASM_DEFAULT ON)
+if(DARLING)
+	set(_LIBRESSL_SKIP_INSTALL_DEFAULT ON)
+	set(_LIBRESSL_APPS_DEFAULT OFF)
+	set(_LIBRESSL_TESTS_DEFAULT OFF)
+	set(_LIBRESSL_MAN_DEFAULT OFF)
+	set(_ENABLE_ASM_DEFAULT OFF)
+endif()
+
+option(LIBRESSL_SKIP_INSTALL "Skip installation" ${_LIBRESSL_SKIP_INSTALL_DEFAULT})
+option(LIBRESSL_APPS "Build apps" ${_LIBRESSL_APPS_DEFAULT})
+option(LIBRESSL_TESTS "Build tests" ${_LIBRESSL_TESTS_DEFAULT})
+option(LIBRESSL_MAN "Build manpages" ${_LIBRESSL_MAN_DEFAULT})
+option(ENABLE_ASM "Enable assembly" ${_ENABLE_ASM_DEFAULT})
+if(DARLING)
+	foreach(_option IN ITEMS
+		LIBRESSL_SKIP_INSTALL
+	)
+		set(${_option} ON CACHE BOOL "Darling vendored LibreSSL setting" FORCE)
+	endforeach()
+	foreach(_option IN ITEMS
+		LIBRESSL_APPS
+		LIBRESSL_TESTS
+		LIBRESSL_MAN
+		ENABLE_ASM
+	)
+		set(${_option} OFF CACHE BOOL "Darling vendored LibreSSL setting" FORCE)
+	endforeach()
+endif()
 option(ENABLE_EXTRATESTS "Enable extra tests that may be unreliable on some platforms" OFF)
 option(ENABLE_NC "Enable installing TLS-enabled nc(1)" OFF)
 set(OPENSSLDIR ${OPENSSLDIR} CACHE PATH "Set the default openssl directory" FORCE)
@@ -342,6 +371,27 @@ if(HAVE_SYSLOG)
 	add_definitions(-DHAVE_SYSLOG)
 endif()
 
+if(DARLING)
+	set(PLATFORM_LIBS)
+
+	foreach(_feature IN ITEMS
+		HAVE_EXPLICIT_BZERO
+		HAVE_FREEZERO
+		HAVE_REALLOCARRAY
+		HAVE_RECALLOCARRAY
+		HAVE_SYSLOG_R
+		HAVE_GETAUXVAL
+		HAVE_ENDIAN_H
+		HAVE_MACHINE_ENDIAN_H
+	)
+		set(${_feature} OFF CACHE BOOL "Darling target LibreSSL feature override" FORCE)
+		remove_definitions(-D${_feature})
+	endforeach()
+
+	set(HAVE_GETPROGNAME ON CACHE BOOL "Darling target provides getprogname" FORCE)
+	add_definitions(-DHAVE_GETPROGNAME)
+endif()
+
 check_symbol_exists(timespecsub sys/time.h HAVE_TIMESPECSUB)
 if(HAVE_TIMESPECSUB)
 	add_definitions(-DHAVE_TIMESPECSUB)
@@ -482,6 +532,10 @@ if(SIZEOF_TIME_T STREQUAL "4")
 	                " ** It will behave incorrectly when handling valid RFC5280 dates")
 endif()
 
+if(DARLING)
+	set(PLATFORM_LIBS)
+endif()
+
 set(OPENSSL_LIBS ssl crypto ${PLATFORM_LIBS})
 set(LIBTLS_LIBS tls ${PLATFORM_LIBS})
 
@@ -513,7 +567,7 @@ if(LIBRESSL_APPS)
 	add_subdirectory(apps)
 endif()
 add_subdirectory(tls)
-if(NOT MSVC)
+if(LIBRESSL_MAN AND NOT MSVC)
 	add_subdirectory(man)
 endif()
 # Tests require the openssl executable and are unavailable when building shared libraries

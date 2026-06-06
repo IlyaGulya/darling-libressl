@@ -75,14 +75,14 @@ set(
 )
 
 add_library(ssl_obj OBJECT ${SSL_SRC})
-target_include_directories(ssl_obj
+make_fat(ssl_obj)
+target_include_directories(ssl_obj BEFORE
 	PRIVATE
-		.
 		hidden
+		.
 		../crypto
 		../crypto/bio
 		../include/compat
-	PUBLIC
 		../include
 		${CMAKE_BINARY_DIR}/include)
 
@@ -94,22 +94,46 @@ if(MSVC)
 endif()
 
 add_library(bs_obj OBJECT ${BS_SRC})
-target_include_directories(bs_obj
+make_fat(bs_obj)
+target_include_directories(bs_obj BEFORE
 	PRIVATE
 		.
 		../include/compat)
 
 if(BUILD_SHARED_LIBS)
-	add_library(ssl $<TARGET_OBJECTS:ssl_obj> $<TARGET_OBJECTS:compat_obj> $<TARGET_OBJECTS:bs_obj>)
+	set(DYLIB_INSTALL_NAME "/usr/lib/libssl.46.dylib")
+	set(DYLIB_CURRENT_VERSION "47.0.0")
+	set(DYLIB_COMPAT_VERSION "47.0.0")
+	if(DARLING)
+		add_darling_library(ssl ${SSL_SRC} ${BS_SRC} ${LIBRESSL_COMPAT_SRC})
+	else()
+		add_darling_library(ssl $<TARGET_OBJECTS:ssl_obj> $<TARGET_OBJECTS:compat_obj> $<TARGET_OBJECTS:bs_obj>)
+	endif()
 else()
-	add_library(ssl $<TARGET_OBJECTS:ssl_obj> empty.c)
+	set(DYLIB_INSTALL_NAME "/usr/lib/libssl.46.dylib")
+	set(DYLIB_CURRENT_VERSION "47.0.0")
+	set(DYLIB_COMPAT_VERSION "47.0.0")
+	if(DARLING)
+		add_darling_library(ssl ${SSL_SRC} ${BS_SRC} ${LIBRESSL_COMPAT_SRC} empty.c)
+	else()
+		add_darling_library(ssl $<TARGET_OBJECTS:ssl_obj> empty.c)
+	endif()
 endif()
+target_include_directories(ssl BEFORE
+	PRIVATE
+		hidden
+		.
+		../crypto
+		../crypto/bio
+		../include/compat
+		../include
+		${CMAKE_BINARY_DIR}/include)
 
 export_symbol(ssl ${CMAKE_CURRENT_SOURCE_DIR}/ssl.sym)
-target_link_libraries(ssl crypto ${PLATFORM_LIBS})
+target_link_libraries(ssl PRIVATE crypto system ${PLATFORM_LIBS})
 set_target_properties(ssl PROPERTIES
-	OUTPUT_NAME ssl
-	ARCHIVE_OUTPUT_NAME ssl
+	OUTPUT_NAME ssl.46
+	ARCHIVE_OUTPUT_NAME ssl.46
 	EXPORT_NAME SSL
 	VERSION ${SSL_VERSION}
 	SOVERSION ${SSL_MAJOR_VERSION}
@@ -127,40 +151,49 @@ target_include_directories(
 
 if(HOST_AARCH64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/aarch64/)
+	target_include_directories(ssl PRIVATE ../crypto/arch/aarch64/)
 elseif(HOST_ARM)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/arm/)
+	target_include_directories(ssl PRIVATE ../crypto/arch/arm/)
 elseif(HOST_I386)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/i386/)
+	target_include_directories(ssl PRIVATE ../crypto/arch/i386/)
 elseif(HOST_LOONGARCH64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/loongarch64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/loongarch64)
 elseif(HOST_MIPS64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/mips64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/mips64)
 elseif(HOST_MIPS)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/mips)
+	target_include_directories(ssl PRIVATE ../crypto/arch/mips)
 elseif(HOST_POWERPC)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/powerpc)
+	target_include_directories(ssl PRIVATE ../crypto/arch/powerpc)
 elseif(HOST_POWERPC64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/powerpc64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/powerpc64)
 elseif(HOST_RISCV64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/riscv64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/riscv64)
 elseif(HOST_SPARC64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/sparc64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/sparc64)
 elseif(HOST_X86_64)
 	target_include_directories(ssl_obj PRIVATE ../crypto/arch/amd64)
+	target_include_directories(ssl PRIVATE ../crypto/arch/amd64)
 endif()
 
-install(
-	TARGETS ssl
-	EXPORT SSL-target
-)
-
-export(
-	EXPORT SSL-target
-	FILE "${LibreSSL_BINARY_DIR}/LibreSSL-SSL.cmake"
-	NAMESPACE LibreSSL::
-)
-
 if(ENABLE_LIBRESSL_INSTALL)
+	install(
+		TARGETS ssl
+		EXPORT SSL-target
+	)
+	export(
+		EXPORT SSL-target
+		FILE "${LibreSSL_BINARY_DIR}/LibreSSL-SSL.cmake"
+		NAMESPACE LibreSSL::
+	)
 	install(
 		TARGETS ssl
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

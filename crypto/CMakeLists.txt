@@ -747,6 +747,12 @@ if(NOT HAVE_TIMINGSAFE_MEMCMP)
 	set(COMPAT_SRC ${COMPAT_SRC} compat/timingsafe_memcmp.c)
 endif()
 
+set(LIBRESSL_COMPAT_SRC)
+foreach(COMPAT_FILE IN LISTS COMPAT_SRC)
+	list(APPEND LIBRESSL_COMPAT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/${COMPAT_FILE})
+endforeach()
+set(LIBRESSL_COMPAT_SRC ${LIBRESSL_COMPAT_SRC} PARENT_SCOPE)
+
 if(NOT ENABLE_ASM)
 	add_definitions(-DOPENSSL_NO_ASM)
 else()
@@ -769,16 +775,18 @@ endforeach()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/crypto_p.sym ${SYMS})
 
 add_library(compat_obj OBJECT ${COMPAT_SRC})
-target_include_directories(compat_obj
+make_fat(compat_obj)
+target_include_directories(compat_obj BEFORE
 	PRIVATE
 		../include/compat
-	PUBLIC
 		../include
 		${CMAKE_BINARY_DIR}/include)
 
 add_library(crypto_obj OBJECT ${CRYPTO_SRC})
-target_include_directories(crypto_obj
+make_fat(crypto_obj)
+target_include_directories(crypto_obj BEFORE
 	PRIVATE
+		hidden
 		.
 		aes
 		asn1
@@ -794,7 +802,6 @@ target_include_directories(crypto_obj
 		ecdsa
 		err
 		evp
-		hidden
 		hmac
 		lhash
 		mlkem
@@ -806,7 +813,6 @@ target_include_directories(crypto_obj
 		stack
 		x509
 		../include/compat
-	PUBLIC
 		../include
 		${CMAKE_BINARY_DIR}/include)
 
@@ -856,13 +862,86 @@ if(MSVC)
 	)
 endif()
 
-add_library(crypto $<TARGET_OBJECTS:crypto_obj> $<TARGET_OBJECTS:compat_obj> empty.c)
+set(DYLIB_INSTALL_NAME "/usr/lib/libcrypto.44.dylib")
+set(DYLIB_CURRENT_VERSION "45.1.0")
+set(DYLIB_COMPAT_VERSION "45.0.0")
+if(DARLING)
+	add_darling_library(crypto ${CRYPTO_SRC} ${COMPAT_SRC} empty.c)
+	target_include_directories(crypto BEFORE
+		PRIVATE
+			hidden
+			.
+			aes
+			asn1
+			bio
+			bn
+			bytestring
+			conf
+			dh
+			dsa
+			curve25519
+			ec
+			ecdh
+			ecdsa
+			err
+			evp
+			hmac
+			lhash
+			mlkem
+			modes
+			ocsp
+			pkcs12
+			rsa
+			sha
+			stack
+			x509
+			../include/compat
+			../include
+			${CMAKE_BINARY_DIR}/include)
+else()
+	add_darling_library(crypto $<TARGET_OBJECTS:crypto_obj> $<TARGET_OBJECTS:compat_obj> empty.c)
+endif()
+
+if(HOST_AARCH64)
+	target_include_directories(crypto PRIVATE arch/aarch64/)
+	target_include_directories(crypto PRIVATE bn/arch/aarch64/)
+elseif(HOST_ARM)
+	target_include_directories(crypto PRIVATE arch/arm/)
+	target_include_directories(crypto PRIVATE bn/arch/arm/)
+elseif(HOST_I386)
+	target_include_directories(crypto PRIVATE arch/i386/)
+	target_include_directories(crypto PRIVATE bn/arch/i386/)
+elseif(HOST_LOONGARCH64)
+	target_include_directories(crypto PRIVATE arch/loongarch64)
+	target_include_directories(crypto PRIVATE bn/arch/loongarch64)
+elseif(HOST_MIPS64)
+	target_include_directories(crypto PRIVATE arch/mips64)
+	target_include_directories(crypto PRIVATE bn/arch/mips64)
+elseif(HOST_MIPS)
+	target_include_directories(crypto PRIVATE arch/mips)
+	target_include_directories(crypto PRIVATE bn/arch/mips)
+elseif(HOST_POWERPC)
+	target_include_directories(crypto PRIVATE arch/powerpc)
+	target_include_directories(crypto PRIVATE bn/arch/powerpc)
+elseif(HOST_POWERPC64)
+	target_include_directories(crypto PRIVATE arch/powerpc64)
+	target_include_directories(crypto PRIVATE bn/arch/powerpc64)
+elseif(HOST_RISCV64)
+	target_include_directories(crypto PRIVATE arch/riscv64)
+	target_include_directories(crypto PRIVATE bn/arch/riscv64)
+elseif(HOST_SPARC64)
+	target_include_directories(crypto PRIVATE arch/sparc64)
+	target_include_directories(crypto PRIVATE bn/arch/sparc64)
+elseif(HOST_X86_64)
+	target_include_directories(crypto PRIVATE arch/amd64)
+	target_include_directories(crypto PRIVATE bn/arch/amd64)
+endif()
 
 export_symbol(crypto ${CMAKE_CURRENT_BINARY_DIR}/crypto_p.sym)
-target_link_libraries(crypto ${PLATFORM_LIBS})
+target_link_libraries(crypto PRIVATE system ${PLATFORM_LIBS})
 set_target_properties(crypto PROPERTIES
-	OUTPUT_NAME crypto
-	ARCHIVE_OUTPUT_NAME crypto
+	OUTPUT_NAME crypto.44
+	ARCHIVE_OUTPUT_NAME crypto.44
 	EXPORT_NAME Crypto
 	VERSION ${CRYPTO_VERSION}
 	SOVERSION ${CRYPTO_MAJOR_VERSION}
@@ -878,18 +957,16 @@ target_include_directories(
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-install(
-	TARGETS crypto
-	EXPORT Crypto-target
-)
-
-export(
-	EXPORT Crypto-target
-	FILE "${LibreSSL_BINARY_DIR}/LibreSSL-Crypto.cmake"
-	NAMESPACE LibreSSL::
-)
-
 if(ENABLE_LIBRESSL_INSTALL)
+	install(
+		TARGETS crypto
+		EXPORT Crypto-target
+	)
+	export(
+		EXPORT Crypto-target
+		FILE "${LibreSSL_BINARY_DIR}/LibreSSL-Crypto.cmake"
+		NAMESPACE LibreSSL::
+	)
 	install(
 		TARGETS crypto
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
